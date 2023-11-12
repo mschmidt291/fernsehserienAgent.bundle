@@ -1,9 +1,4 @@
-import string
-import os
-import urllib2
-import urllib
 import re
-import ssl
 import json
 import requests
 import re
