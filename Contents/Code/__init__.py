@@ -43,7 +43,7 @@ def getEpisodeInfo(metadata, season, episode):
   for title in episodes:
     results = re.findall('(\d+)[.](\d+)', title[1])
     for result in results:
-      if removeLeadingZeros(result[0]) == season:
+      if removeLeadingZeros(result[0]) == season or removeLeadingZeros(result[0]) == '0':
         if removeLeadingZeros(result[1]) == episode:
           title_match = re.sub('(\d+)[.](\d+)', '', title[1])
           summary = getEpisodeSummary(title[0])
@@ -55,7 +55,7 @@ def getEpisodeSummary(url):
   summary = re.findall('<div class="episode-output-inhalt-inner">(.*?)</div><ea', r.text)
   clean = re.compile('<.*?>')
   summary = clean.sub('',summary[0])
-  if summary != None:
+  if summary != "":
     return summary
   else:
     return "TBA"
