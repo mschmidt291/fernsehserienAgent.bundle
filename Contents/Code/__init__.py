@@ -1,7 +1,7 @@
 import re
 import json
 import requests
-import re
+import time
 def removeLeadingZeros(num): 
   
     # traverse the entire string 
@@ -47,7 +47,8 @@ def getEpisodeInfo(metadata, season, episode):
         if removeLeadingZeros(result[1]) == episode:
           title_match = re.sub('(\d+)[.](\d+)', '', title[1])
           summary = getEpisodeSummary(title[0])
-          return title_match, summary
+          firstAired = getFirstAired(title[0])
+          return title_match, summary, firstAired
 
 def getEpisodeSummary(url):
   episodeInfo = "https://www.fernsehserien.de/%s" % url
@@ -60,6 +61,16 @@ def getEpisodeSummary(url):
   else:
     return "TBA"
   
+def getFirstAired(url):
+  episodeInfo = "https://www.fernsehserien.de/%s" % url
+  r = requests.get(episodeInfo)
+  date = re.search('<ea-angabe-datum>.*?(\d{2})\.(\d{2})\.(\d{4}).*?</ea-angabe-datum>', r.text)
+  day = date.group(1)
+  month = date.group(2)
+  year = date.group(3)
+  formatted_date = "%s-%s-%s" % (year,month,day)
+  return Datetime.ParseDate(formatted_date).date()  
+
 def getActors(metadata):
   url = "https://www.fernsehserien.de/%s/cast-crew" % metadata.id
   r = requests.get(url)
@@ -121,6 +132,7 @@ class FernsehserienAgent(Agent.TV_Shows):
       #Log("MEDIA: %s" % dir(media))
       metadata.title = media.title
       metadata.summary = getSummary(metadata=metadata)
+      metadata.originally_available_at = getFirstAired(url=metadata.id)
       posters = getPosters(metadata=metadata)
       actors = getActors(metadata=metadata)
       for actor in actors:
@@ -133,6 +145,7 @@ class FernsehserienAgent(Agent.TV_Shows):
         metadata.posters[poster] = Proxy.Preview(HTTP.Request(poster))
       for season in media.seasons:
         for episode in media.seasons[season].episodes:
-          title, summary = getEpisodeInfo(metadata=metadata, season=season, episode=episode)
+          title, summary, firstAired = getEpisodeInfo(metadata=metadata, season=season, episode=episode)
           metadata.seasons[season].episodes[episode].title = title
           metadata.seasons[season].episodes[episode].summary = summary
+          metadata.seasons[season].episodes[episode].originally_available_at = firstAired
