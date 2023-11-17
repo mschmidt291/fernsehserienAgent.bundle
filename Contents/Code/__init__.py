@@ -23,7 +23,7 @@ def removeLeadingZeros(num):
     # non-zero character, hence return "0" 
     return "0"; 
 def Start():
-    Log("Stash metadata agent started")
+    Log("Fernsehserien.de metadata agent started")
     HTTP.Headers['Accept'] = 'application/json'
     HTTP.CacheTime = 0.1
     ValidatePrefs()
@@ -42,7 +42,8 @@ def getPoster(metadata):
     result = tvdb.search_by_remote_id(ids[1])
     image = result[0]['series']['image']
     posters.append(image)
-  Log(posters)
+  if Prefs['Debug']:
+    Log(posters)
   return posters
 
 def getSummary(metadata):
@@ -54,6 +55,8 @@ def getSummary(metadata):
   return summary
 
 def getEpisodeInfo(metadata, season, episode):
+  if Prefs['Debug']:
+    Log("Calling getEpisodeInfo for Metadata: %s, Season: %s, Episode: %s" % (metadata, season, episode) )
   overview = "https://www.fernsehserien.de/%s/episodenguide" % metadata
   r = requests.get(overview)
   episodes = re.findall('<a role="row" data-event-category="liste-episoden" href="/([^"]+?)" title="([^"]+?)"', r.text)
@@ -65,21 +68,30 @@ def getEpisodeInfo(metadata, season, episode):
           title_match = re.sub('(\d+)[.](\d+)', '', title[1])
           summary = getEpisodeSummary(title[0])
           firstAired = getFirstAired(title[0])
-          
+          if Prefs['Debug']:
+            Log("Title: %s, Summary: %s, firstAired: %s" % (title_match, summary, firstAired))
           return title_match, summary, firstAired
 
 def getEpisodeSummary(url):
+  if Prefs['Debug']:
+    Log("Calling getEpisodeSummary with URL: %s" % url)
   episodeInfo = "https://www.fernsehserien.de/%s" % url
   r = requests.get(episodeInfo)
   summary = re.findall('<div class="episode-output-inhalt-inner">(.*?)</div><ea', r.text)
   clean = re.compile('<.*?>')
   summary = clean.sub('',summary[0])
   if summary != "":
+    if Prefs['Debug']:
+      Log("Summary: %s" % summary)
     return summary
   else:
+    if Prefs['Debug']:
+      Log("Summary: TBA")
     return "TBA"
   
 def getFirstAired(url):
+  if Prefs['Debug']:
+    Log("Calling getFirstAired with URL %s" % url)
   episodeInfo = "https://www.fernsehserien.de/%s" % url
   r = requests.get(episodeInfo)
   date = re.search('<ea-angabe-datum>.*?(\d{2})\.(\d{2})\.(\d{4}).*?</ea-angabe-datum>', r.text)
@@ -87,9 +99,13 @@ def getFirstAired(url):
   month = date.group(2)
   year = date.group(3)
   formatted_date = "%s-%s-%s" % (year,month,day)
+  if Prefs['Debug']:
+    Log("FirstAired Date: %s" % formatted_date)
   return Datetime.ParseDate(formatted_date).date()  
 
 def getActors(metadata):
+  if Prefs['Debug']:
+    Log("Calling getActors with metadata: %s" % metadata)
   url = "https://www.fernsehserien.de/%s/cast-crew" % metadata
   r = requests.get(url)
   roles = re.findall('<h2 class="header-.*?" id="(.*?)">(.*?)</h2>', r.text)
@@ -98,6 +114,8 @@ def getActors(metadata):
     persons = re.findall('<a itemprop="url" data-event-category="liste-%s" href="/(.*?)/filmografie" class="ep-hover" title="(.*?)"><figure class="fs-picture.*?"><span class="fs-picture-placeholder" style=".*?">.*?src="(.*?)"' % role[1].lower() ,r.text)
     for person in persons:
       actors.append((person[1], role[1], person[2]))
+  if Prefs['Debug']:
+    Log("Actors: %s" % actors)
   return actors
   
 class FernsehserienAgent(Agent.TV_Shows):
@@ -176,8 +194,15 @@ class FernsehserienAgent(Agent.TV_Shows):
         metadata.posters[poster] = Proxy.Preview(HTTP.Request(poster))
       
       for season in media.seasons:
+        if Prefs['Debug']:
+          Log("Updating Season %s" % season)
         for episode in media.seasons[season].episodes:
-          title, summary, firstAired = getEpisodeInfo(metadata=ids[0], season=season, episode=episode)
-          metadata.seasons[season].episodes[episode].title = title
-          metadata.seasons[season].episodes[episode].summary = summary
-          metadata.seasons[season].episodes[episode].originally_available_at = firstAired
+          if Prefs['Debug']:
+            Log("Updating Episode: %s" % episode)
+          try:
+            title, summary, firstAired = getEpisodeInfo(metadata=ids[0], season=season, episode=episode)
+            metadata.seasons[season].episodes[episode].title = title
+            metadata.seasons[season].episodes[episode].summary = summary
+            metadata.seasons[season].episodes[episode].originally_available_at = firstAired
+          except:
+            Log("Could not Update Episode %s in Season %s" % (episode, season))
