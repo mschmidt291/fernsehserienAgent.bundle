@@ -2,6 +2,11 @@ import re
 import json
 import requests
 import time
+import tvdb_v4_official
+
+def ValidatePrefs():
+    pass
+
 def removeLeadingZeros(num): 
   
     # traverse the entire string 
@@ -21,15 +26,27 @@ def Start():
     Log("Stash metadata agent started")
     HTTP.Headers['Accept'] = 'application/json'
     HTTP.CacheTime = 0.1
-
-def getPosters(metadata):
-  url = "https://www.fernsehserien.de/%s" % metadata.id
-  r = requests.get(url)
-  images = re.findall('<meta itemprop="image" content="(https://bilder.fernsehserien.de/sendung/.*?[^"]+?[.](?:png|jpg|jpeg))"',r.text)
-  return images
+    ValidatePrefs()
+def getPoster(metadata):
+  ids = metadata.id.split("||")
+  posters = []
+  if ids[1] == "NoIMDB" or Prefs['APIKey'] == None:
+    url = "https://www.fernsehserien.de/%s" % ids[0]
+    Log(ids[0])
+    r = requests.get(url)
+    images = re.findall('<meta itemprop="image" content="(https://bilder.fernsehserien.de/sendung/.*?[^"]+?[.](?:png|jpg|jpeg))"',r.text)
+    for image in images:
+      posters.append(image)
+  elif Prefs['APIKey']:
+    tvdb = tvdb_v4_official.TVDB('%s' % Prefs['APIKey'])
+    result = tvdb.search_by_remote_id(ids[1])
+    image = result[0]['series']['image']
+    posters.append(image)
+  Log(posters)
+  return posters
 
 def getSummary(metadata):
-  url = "https://www.fernsehserien.de/%s" % metadata.id
+  url = "https://www.fernsehserien.de/%s" % metadata
   r = requests.get(url)
   summary = re.findall('"serie-beschreibung"[^>]*>(.*?)</div><', r.text)
   clean = re.compile('<.*?>')
@@ -37,7 +54,7 @@ def getSummary(metadata):
   return summary
 
 def getEpisodeInfo(metadata, season, episode):
-  overview = "https://www.fernsehserien.de/%s/episodenguide" % metadata.id
+  overview = "https://www.fernsehserien.de/%s/episodenguide" % metadata
   r = requests.get(overview)
   episodes = re.findall('<a role="row" data-event-category="liste-episoden" href="/([^"]+?)" title="([^"]+?)"', r.text)
   for title in episodes:
@@ -48,6 +65,7 @@ def getEpisodeInfo(metadata, season, episode):
           title_match = re.sub('(\d+)[.](\d+)', '', title[1])
           summary = getEpisodeSummary(title[0])
           firstAired = getFirstAired(title[0])
+          
           return title_match, summary, firstAired
 
 def getEpisodeSummary(url):
@@ -72,12 +90,12 @@ def getFirstAired(url):
   return Datetime.ParseDate(formatted_date).date()  
 
 def getActors(metadata):
-  url = "https://www.fernsehserien.de/%s/cast-crew" % metadata.id
+  url = "https://www.fernsehserien.de/%s/cast-crew" % metadata
   r = requests.get(url)
   roles = re.findall('<h2 class="header-.*?" id="(.*?)">(.*?)</h2>', r.text)
   actors = []
   for role in roles:
-    persons = re.findall('<li itemscope itemtype="http://schema\.org/Person"><a itemprop="url" data-event-category="liste-%s" href="/(.*?)/filmografie" class="ep-hover" title="(.*?)"><figure class="fs-picture.*?"><span class="fs-picture-placeholder" style=".*?">.*?src="(.*?)"' % role[1].lower() ,r.text)
+    persons = re.findall('<a itemprop="url" data-event-category="liste-%s" href="/(.*?)/filmografie" class="ep-hover" title="(.*?)"><figure class="fs-picture.*?"><span class="fs-picture-placeholder" style=".*?">.*?src="(.*?)"' % role[1].lower() ,r.text)
     for person in persons:
       actors.append((person[1], role[1], person[2]))
   return actors
@@ -115,37 +133,51 @@ class FernsehserienAgent(Agent.TV_Shows):
           'x-csrf-token': '$2y$10$OuY9ezTFhPLwQZARYUxikuFCwnD7amYIltelrhgFzxVK8ypU2lgdm',
         }
         
-      searchUrl = 'https://www.fernsehserien.de/fastsearch'
-
       json_data = {"suchwort": "%s" % media.show}
-      r = requests.post('https://www.fernsehserien.de/fastsearch', cookies=cookies, headers=headers, data=json.dumps(json_data))
-      r = json.loads(r.text)
-      for result in r['items']:
-        fsId = result['s']
+      search = requests.post('https://www.fernsehserien.de/fastsearch', cookies=cookies, headers=headers, data=json.dumps(json_data))
+      search = json.loads(search.text)
+      for result in search['items']:
+        overview = requests.get('https://www.fernsehserien.de/%s' % result['s']) 
+        overview = overview.text
+        imdbId = re.search('imdb.com/title/(.*?)/.*?</figure>IMDb', overview)
+        if imdbId != None:
+          ids = result['s'] + "||" + imdbId.group(1)
+        else:
+          ids = result['s'] + "||NoIMDB"
         fsTitle = result['t']
         fsAired = result['l']
         fsScore = 100 - Util.LevenshteinDistance(media.show,fsTitle)
-        results.Append(MetadataSearchResult(id=fsId, name=fsTitle, year=fsAired, score=fsScore, lang=lang))
+        thumb = result['b']
+        if result['a'] == "sg":
+          results.Append(MetadataSearchResult(id=ids, name=fsTitle, year=fsAired, score=fsScore, lang=lang, thumb=thumb))
 
     def update(self, metadata, media, lang):
       #Log("LANG: %s " % dir(lang))
       #Log("MEDIA: %s" % dir(media))
+      ids = metadata.id.split("||")
       metadata.title = media.title
-      metadata.summary = getSummary(metadata=metadata)
-      metadata.originally_available_at = getFirstAired(url=metadata.id)
-      posters = getPosters(metadata=metadata)
-      actors = getActors(metadata=metadata)
+      metadata.summary = getSummary(metadata=ids[0])
+      metadata.originally_available_at = getFirstAired(url=ids[0])
+      posters = getPoster(metadata=metadata)
+      actors = getActors(metadata=ids[0])
       for actor in actors:
         role = metadata.roles.new()
         role.name = actor[0]
         role.role = actor[1]
         role.photo = actor[2] 
-
+      
+      # Delete FS Posters if APIKey for TVDB is set.
+      if Prefs['APIKey']:
+        for poster in metadata.posters.keys():
+          if "fernsehserien.de/" in poster:
+            del metadata.posters[poster]
+      
       for poster in posters:
         metadata.posters[poster] = Proxy.Preview(HTTP.Request(poster))
+      
       for season in media.seasons:
         for episode in media.seasons[season].episodes:
-          title, summary, firstAired = getEpisodeInfo(metadata=metadata, season=season, episode=episode)
+          title, summary, firstAired = getEpisodeInfo(metadata=ids[0], season=season, episode=episode)
           metadata.seasons[season].episodes[episode].title = title
           metadata.seasons[season].episodes[episode].summary = summary
           metadata.seasons[season].episodes[episode].originally_available_at = firstAired

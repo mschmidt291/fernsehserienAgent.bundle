@@ -18,4 +18,4 @@ Clone the repository in a folder called "fernsehserienagent.bundle" and place th
 	- Actor Name
 	- Actor Roles
 - Episode Summary and Title
-- Series Posters (Often distorted because fernsehserien.de does not provide a nice format of images for usage with Plex.) -- Needs to be fixed somehow
+- Series Posters (Fetched from Fernsehserien.de OR from thetvdb.com if APIKey is set in the Settings)

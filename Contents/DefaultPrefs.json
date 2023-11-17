@@ -1,0 +1,8 @@
+[
+    {
+        "id": "APIKey",
+        "label": "(RECOMMENDED) TVDB ApiKey - Used to fetch better images directly from TVDB. If unset, fernsehserien.de will be used for getting the images.",
+        "type": "text",
+        "default": ""
+    }
+]
